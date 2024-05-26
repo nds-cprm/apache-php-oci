@@ -1,10 +1,8 @@
-FROM debian:bookworm
+FROM debian:bookworm AS BUILD
 
 ARG PHP_VERSION=5.4.16
 # production or development
 ARG PHP_ENV=production
-
-SHELL [ "/bin/bash", "-c" ]
 
 # dependencies
 RUN apt-get update && \
@@ -14,7 +12,6 @@ RUN apt-get update && \
         ca-certificates \
         apache2 \
         apache2-dev \
-        git \
         libxml2-dev \
         sendmail \
         byacc \
@@ -43,6 +40,22 @@ RUN wget -O- http://museum.php.net/php5/php-${PHP_VERSION}.tar.gz | tar zx && \
         sed -i 's/;date.timezone =.*/  date.timezone \= "America\/Sao_Paulo"/' /usr/local/lib/php.ini \
     )
 
+FROM debian:bookworm-slim AS RELEASE
+
+# dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends --no-install-suggests \
+        ca-certificates \
+        apache2 \
+        libxml2 \
+        sendmail && \
+    apt-get autoremove && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=BUILD /usr/lib/apache2/modules/libphp5.so /usr/lib/apache2/modules
+COPY --from=BUILD /etc/apache2/mods-available/php5.load /etc/apache2/mods-available
+COPY --from=BUILD /usr/local /usr/local
+
 RUN a2dismod mpm_event mpm_worker php5 && \
     echo "AddHandler application/x-httpd-php .php" > /etc/apache2/mods-available/php5.conf && \
     echo "AddType application/x-httpd-php .php" >> /etc/apache2/mods-available/php5.conf && \
@@ -52,8 +65,6 @@ RUN a2dismod mpm_event mpm_worker php5 && \
     echo "<?php phpinfo(); ?>" > /var/www/html/index.php
 
 WORKDIR /var/www/html
-
-SHELL [ "/bin/sh", "-c" ]
 
 # EXPOSE 8080
 
